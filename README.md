@@ -1,0 +1,1 @@
+# ZulpikarovaAS_project
