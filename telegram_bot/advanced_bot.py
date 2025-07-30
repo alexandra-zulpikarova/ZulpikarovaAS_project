@@ -13,6 +13,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 import os
 
+# Импорт системы чекбоксов
+try:
+    from checkbox_system import setup_checkbox_handlers, handle_checkbox_callbacks
+    CHECKBOX_AVAILABLE = True
+except ImportError:
+    CHECKBOX_AVAILABLE = False
+    print("⚠️ Модуль checkbox_system не найден. Функция магазина недоступна.")
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -77,17 +85,25 @@ def get_user_profile(user_id: int) -> Dict[str, Any]:
 
 # Главное меню
 def get_main_menu() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    keyboard_rows = [
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
          InlineKeyboardButton(text="🎮 Игры", callback_data="games")],
         [InlineKeyboardButton(text="🧮 Калькулятор", callback_data="calculator"),
          InlineKeyboardButton(text="📝 Заметки", callback_data="notes")],
         [InlineKeyboardButton(text="🌤 Погода", callback_data="weather"),
-         InlineKeyboardButton(text="🎲 Случайное", callback_data="random")],
+         InlineKeyboardButton(text="🎲 Случайное", callback_data="random")]
+    ]
+    
+    # Добавляем кнопку магазина, если доступна система чекбоксов
+    if CHECKBOX_AVAILABLE:
+        keyboard_rows.append([InlineKeyboardButton(text="🛍 Магазин", callback_data="show_shop")])
+    
+    keyboard_rows.extend([
         [InlineKeyboardButton(text="💬 Отзыв", callback_data="feedback"),
          InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help")]
     ])
-    return keyboard
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 # Обработчик команды /start
 @dp.message(CommandStart())
@@ -96,6 +112,8 @@ async def cmd_start(message: Message, state: FSMContext):
     profile = get_user_profile(user.id)
     
     name = profile.get("name") or user.first_name or "Пользователь"
+    
+    shop_text = "\n• 🛍 Интерактивный магазин с чекбоксами" if CHECKBOX_AVAILABLE else ""
     
     welcome_text = f"""
 🎉 Добро пожаловать, {name}!
@@ -108,7 +126,7 @@ async def cmd_start(message: Message, state: FSMContext):
 • 🧮 Встроенный калькулятор
 • 📝 Система заметок
 • 🌤 Информация о погоде
-• 🎲 Развлекательный контент
+• 🎲 Развлекательный контент{shop_text}
 
 Выберите интересующий раздел:
 """
@@ -148,6 +166,12 @@ async def handle_callbacks(callback: CallbackQuery, state: FSMContext):
         await start_add_note(callback, state)
     elif callback.data.startswith("delete_note_"):
         await delete_note(callback)
+    elif CHECKBOX_AVAILABLE and any(callback.data.startswith(prefix) for prefix in [
+        "show_shop", "category_", "back_to_categories", "show_cart",
+        "toggle_", "qty_", "remove_", "clear_cart", "confirm_order"
+    ]):
+        # Передаем обработку системе чекбоксов
+        await handle_checkbox_callbacks(callback, state)
 
 async def show_profile(callback: CallbackQuery, profile: Dict[str, Any]):
     user = callback.from_user
@@ -447,7 +471,7 @@ async def show_help(callback: CallbackQuery):
 
 📱 <b>Команды:</b>
 /start — перезапуск бота
-/help — показать справку
+/help — показать справку{f'\n/shop — открыть магазин' if CHECKBOX_AVAILABLE else ''}
 """
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -614,6 +638,11 @@ async def main():
         return
     
     try:
+        # Настройка обработчиков системы чекбоксов
+        if CHECKBOX_AVAILABLE:
+            setup_checkbox_handlers(dp)
+            print("🛍 Система магазина с чекбоксами активирована")
+        
         await bot.delete_webhook(drop_pending_updates=True)
         print("✅ Бот успешно запущен и готов к работе!")
         print("📱 Найдите бота в Telegram и отправьте команду /start")
